@@ -11,14 +11,14 @@
       "route file": ["route file"],
       "spam mails": [],
       "perfect store": ["Perfect store", "secondaries", "shelf share"],
-      "other projects": []
+      "stales": ["Stales"]
     },
     "sent": {
       "automated mails sent": ["this is an automatic mail", "do not reply", "automated notification"],
       "route file sent": ["route file"],
       "spam mails sent": [],
-      "perfect store sent": ["Perfect store", "secondaries", "shelf share"],
-      "other projects sent": []
+      "perfect store sent": ["Perfect store", "secondaries", "shelf share", "2POS", "Perfect Store", "perfect store"],
+      "stales sent": ["Stales", "stales"]
     }
   },
   "log_path": "log.txt",

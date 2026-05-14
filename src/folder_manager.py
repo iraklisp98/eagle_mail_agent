@@ -6,8 +6,9 @@ def get_or_create_subfolder(parent, name):
 
 
 def ensure_subfolders(inbox, sent_folder, config):
+    received_parent = get_or_create_subfolder(inbox, "Received")
     received_folders = {
-        name: get_or_create_subfolder(inbox, name)
+        name: get_or_create_subfolder(received_parent, name)
         for name in config["folders"]["received"]
     }
     sent_folders = {
