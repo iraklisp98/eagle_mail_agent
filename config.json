@@ -1,0 +1,26 @@
+{
+  "ollama": {
+    "model": "llama3",
+    "endpoint": "http://localhost:11434"
+  },
+  "polling_interval_seconds": 60,
+  "max_body_chars": 2000,
+  "folders": {
+    "received": {
+      "automated mails": ["this is an automatic mail", "do not reply", "automated notification"],
+      "route file": ["route file"],
+      "spam mails": [],
+      "perfect store": ["Perfect store", "secondaries", "shelf share"],
+      "other projects": []
+    },
+    "sent": {
+      "automated mails sent": ["this is an automatic mail", "do not reply", "automated notification"],
+      "route file sent": ["route file"],
+      "spam mails sent": [],
+      "perfect store sent": ["Perfect store", "secondaries", "shelf share"],
+      "other projects sent": []
+    }
+  },
+  "log_path": "log.txt",
+  "fallback_behavior": "leave_in_place"
+}
