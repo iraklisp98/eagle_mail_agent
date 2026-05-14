@@ -26,7 +26,9 @@ A local, background-running Python agent that automatically classifies and moves
 
 ## 4. Folder Structure
 
-### Received (Inbox subfolders)
+### Received (Inbox → Received subfolders)
+
+Received emails are placed inside a `Received` parent folder under Inbox (`Inbox/Received/<folder>`).
 
 | Folder | Classification Signals |
 |---|---|
@@ -34,7 +36,7 @@ A local, background-running Python agent that automatically classifies and moves
 | route file | "route file" |
 | spam mails | Unsolicited, promotional, no business context |
 | perfect store | "Perfect store", "secondaries", "shelf share" |
-| other projects | Work-related emails not matching any above category |
+| stales | "Stales" |
 
 ### Sent (Sent Items subfolders)
 
@@ -43,25 +45,41 @@ A local, background-running Python agent that automatically classifies and moves
 | automated mails sent | Mirror of received automated mails |
 | route file sent | Mirror of received route file |
 | spam mails sent | Mirror of received spam mails |
-| perfect store sent | Mirror of received perfect store |
-| other projects sent | Mirror of received other projects |
+| perfect store sent | "Perfect store", "Perfect Store", "perfect store", "secondaries", "shelf share", "2POS" |
+| stales sent | "Stales", "stales" |
 
 ---
 
 ## 5. Classification Logic
 
-1. Agent fetches unread emails from Inbox and Sent Items
-2. For each email, subject + body are passed to Ollama (llama3) via a structured prompt
-3. The prompt instructs the model to return exactly one folder label from the valid list
-4. If the model output matches a valid label → email is moved to that folder
-5. If the model output is ambiguous, empty, or does not match any valid label → email is left in place (no move)
-6. Email always remains **unread** after processing
+Classification uses a two-stage pipeline:
+
+**Stage 1 — Keyword scoring (fast path)**
+1. Concatenate subject + body (lowercased)
+2. For each folder, count how many of its keyword signals appear in the text
+3. If one or more folders scored > 0:
+   - Pick the folder with the highest keyword count
+   - If two folders tie on count, the one listed first in `config.json` wins (priority by order)
+   - Move the email immediately — no LLM call
+4. If no folder scored > 0 → fall through to Stage 2
+
+**Stage 2 — Ollama LLM (fallback)**
+1. Build a structured prompt with the folder list and their signals
+2. Send subject + body to the local Ollama model (llama3) via `/api/generate` at **temperature 0** for deterministic output
+3. Parse the response in two passes:
+   - **Exact match**: response lowercased matches a folder name exactly → move the email
+   - **Fuzzy match**: a valid folder name appears as a substring of the response → move the email
+4. If neither pass succeeds (ambiguous, "unsure", or unrecognisable output) → leave the email in place
+
+Email always remains **unread** after processing.
 
 ### Prompt Strategy
 
 - Provide the model with the list of valid folder names and their keyword signals from `config.json`
-- Ask for a single label response only
-- Treat any non-matching output as low confidence → skip
+- Ask for a single label response only — no explanation, no punctuation
+- Folders with no signals are described as catch-all categories
+- Temperature is set to 0 so output is deterministic and format-compliant
+- Any response that does not contain a valid label after both parse passes is treated as low confidence → skip
 
 ---
 
@@ -78,16 +96,22 @@ A local, background-running Python agent that automatically classifies and moves
 
 ```
 eagle_mail_agent/
-├── main.py              # Entry point and polling loop
-├── outlook_client.py    # win32com Outlook interface (read emails, move between folders)
-├── classifier.py        # Ollama API call and label parsing
-├── folder_manager.py    # Folder lookup and validation
-├── logger.py            # Append-mode log writer
-├── config_loader.py     # Loads and validates config.json
-├── config.json          # User-editable settings
-├── run.bat              # Windows launcher
-├── prd.md               # This document
-└── log.txt              # Auto-generated at runtime
+├── src/
+│   ├── __init__.py
+│   ├── classifier.py        # Keyword match + Ollama fallback classifier
+│   ├── config_loader.py     # Loads and validates config.json
+│   ├── folder_manager.py    # Subfolder lookup and auto-creation
+│   ├── logger.py            # Append-mode logger (file + console)
+│   ├── outlook_client.py    # Outlook COM interface (read, move emails)
+│   └── process.py           # Per-email processing logic (inbox and sent)
+├── docs/
+│   └── prd.md               # This document
+├── main.py                  # Entry point and polling loop
+├── config.json              # User-editable settings
+├── requirements.txt         # Python dependencies
+├── setup.bat                # One-time setup (venv + install)
+├── run.bat                  # Windows launcher
+└── log.txt                  # Auto-generated at runtime
 ```
 
 ---
@@ -108,14 +132,14 @@ eagle_mail_agent/
       "route file": ["route file"],
       "spam mails": [],
       "perfect store": ["Perfect store", "secondaries", "shelf share"],
-      "other projects": []
+      "stales": ["Stales"]
     },
     "sent": {
       "automated mails sent": ["this is an automatic mail", "do not reply", "automated notification"],
       "route file sent": ["route file"],
       "spam mails sent": [],
-      "perfect store sent": ["Perfect store", "secondaries", "shelf share"],
-      "other projects sent": []
+      "perfect store sent": ["Perfect store", "secondaries", "shelf share", "2POS", "Perfect Store", "perfect store"],
+      "stales sent": ["Stales", "stales"]
     }
   },
   "log_path": "log.txt",

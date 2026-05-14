@@ -10,10 +10,16 @@ On each polling cycle (default: every 60 seconds) the agent:
 
 1. Fetches all **unread emails** from your Inbox
 2. Fetches any **new sent emails** not yet seen in the current session
-3. Sends each email's subject and body to the local Ollama model (llama3)
-4. Moves the email to the matching Outlook subfolder
-5. If the model is not confident — the email is left untouched
-6. Logs every action to `log.txt`
+3. For each email, runs a **keyword scoring pass** against the signals in `config.json`:
+   - Counts how many keywords match per folder
+   - Picks the folder with the highest count
+   - If two folders tie, the one listed first in `config.json` wins (priority by order)
+4. If no keywords match at all, falls back to the **local Ollama model (llama3)**:
+   - Runs at temperature 0 for deterministic output
+   - Accepts an exact label or any response that contains a valid label as a substring
+5. Moves the email to the winning folder
+6. If neither stage produces a confident match — the email is left untouched
+7. Logs every action to `log.txt`
 
 The agent **never** deletes, marks as read, replies to, or forwards any email.
 
@@ -78,16 +84,18 @@ To stop the agent, close the terminal window or press `Ctrl+C`.
 
 ## Folder Structure in Outlook
 
-The agent will automatically create the following subfolders in Outlook if they do not exist:
+The agent will automatically create the following subfolders in Outlook if they do not exist.
 
-**Inside Inbox:**
+Received emails are placed inside a `Received` parent folder under your Inbox (`Inbox/Received/<folder>`).
+
+**Inside Inbox → Received:**
 | Folder | Sorted emails |
 |---|---|
 | automated mails | Emails containing automated/no-reply signals |
 | route file | Emails mentioning "route file" |
 | spam mails | Unsolicited or promotional emails |
 | perfect store | Emails mentioning "Perfect store", "secondaries", "shelf share" |
-| other projects | Work emails not matching any other category |
+| stales | Emails mentioning "Stales" |
 
 **Inside Sent Items:**
 | Folder | Sorted emails |
@@ -95,8 +103,8 @@ The agent will automatically create the following subfolders in Outlook if they 
 | automated mails sent | Mirror of received automated mails |
 | route file sent | Mirror of received route file |
 | spam mails sent | Mirror of received spam mails |
-| perfect store sent | Mirror of received perfect store |
-| other projects sent | Mirror of received other projects |
+| perfect store sent | Emails mentioning "Perfect store", "secondaries", "shelf share", "2POS" |
+| stales sent | Emails mentioning "Stales" |
 
 ---
 
@@ -110,13 +118,14 @@ All settings live in `config.json`. You can edit this file without touching any 
 | `ollama.endpoint` | Ollama API URL (default: `http://localhost:11434`) |
 | `polling_interval_seconds` | How often the agent checks for new emails (default: `60`) |
 | `max_body_chars` | Max characters of email body sent to the model (default: `2000`) |
-| `folders.received` | Received folder names and their keyword signals |
-| `folders.sent` | Sent folder names and their keyword signals |
+| `folders.received` | Received folder names and their keyword signals. Order determines priority when scores tie. |
+| `folders.sent` | Sent folder names and their keyword signals. Order determines priority when scores tie. |
 | `log_path` | Path to the log file (default: `log.txt`) |
 
 To add or change keywords for a folder, edit the signal list in `config.json`:
 ```json
-"perfect store": ["Perfect store", "secondaries", "shelf share"]
+"perfect store": ["Perfect store", "secondaries", "shelf share"],
+"stales": ["Stales"]
 ```
 
 ---
@@ -142,11 +151,12 @@ Every action is appended to `log.txt`:
 eagle_mail_agent/
 ├── src/
 │   ├── __init__.py
-│   ├── classifier.py        # Ollama API call and label parsing
+│   ├── classifier.py        # Keyword match + Ollama fallback classifier
 │   ├── config_loader.py     # Loads and validates config.json
 │   ├── folder_manager.py    # Subfolder lookup and auto-creation
 │   ├── logger.py            # Append-mode logger (file + console)
-│   └── outlook_client.py    # Outlook COM interface (read, move emails)
+│   ├── outlook_client.py    # Outlook COM interface (read, move emails)
+│   └── process.py           # Per-email processing logic (inbox and sent)
 ├── docs/
 │   └── prd.md               # Product requirements document
 ├── main.py                  # Entry point and polling loop

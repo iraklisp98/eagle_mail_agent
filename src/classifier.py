@@ -3,13 +3,25 @@ import requests
 
 def _keyword_match(subject, body, folder_config, mail_type):
     text = f"{subject} {body}".lower()
-    matches = set()
+    scores = {}
     for folder_name, signals in folder_config[mail_type].items():
-        for keyword in signals:
-            if keyword.lower() in text:
-                matches.add(folder_name)
-                break
-    return matches.pop() if len(matches) == 1 else None
+        count = sum(1 for kw in signals if kw.lower() in text)
+        if count > 0:
+            scores[folder_name] = count
+
+    if not scores:
+        return None
+    if len(scores) == 1:
+        return next(iter(scores))
+
+    # Multiple matches: pick highest keyword count; use config order as priority tiebreaker
+    max_score = max(scores.values())
+    top = [name for name, score in scores.items() if score == max_score]
+    for folder_name in folder_config[mail_type]:
+        if folder_name in top:
+            return folder_name
+
+    return None
 
 
 def _build_prompt(subject, body, folder_config, mail_type):
@@ -48,13 +60,27 @@ def _ollama_classify(subject, body, config, mail_type):
     try:
         response = requests.post(
             f"{config['ollama']['endpoint']}/api/generate",
-            json={"model": config["ollama"]["model"], "prompt": prompt, "stream": False},
+            json={
+                "model": config["ollama"]["model"],
+                "prompt": prompt,
+                "stream": False,
+                "options": {"temperature": 0},
+            },
             timeout=30,
         )
         response.raise_for_status()
         raw = response.json().get("response", "").strip().strip('"').lower()
         valid = {name.lower(): name for name in config["folders"][mail_type]}
-        return valid.get(raw)
+
+        if raw in valid:
+            return valid[raw]
+
+        # Fuzzy fallback: find any valid label as a substring of the response
+        for label_lower, label_orig in valid.items():
+            if label_lower in raw:
+                return label_orig
+
+        return None
     except Exception:
         return None
 
